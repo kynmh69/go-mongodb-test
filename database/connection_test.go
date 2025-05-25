@@ -68,12 +68,12 @@ func TestNewConnection_Environment(t *testing.T) {
 func TestDatabase_Close(t *testing.T) {
 	// Test closing a nil client (should return error)
 	db := &Database{}
-	
+
 	err := db.Close()
 	if err == nil {
 		t.Error("Expected error when closing database with nil client, but got nil")
 	}
-	
+
 	if err != nil && err.Error() != "client is nil" {
 		t.Errorf("Expected error message 'client is nil', got '%s'", err.Error())
 	}
@@ -82,12 +82,12 @@ func TestDatabase_Close(t *testing.T) {
 func TestNewConnection_Timeout(t *testing.T) {
 	// Test that the function uses proper timeout
 	start := time.Now()
-	
+
 	// This will timeout since we don't have a MongoDB instance
 	_, err := NewConnection()
-	
+
 	elapsed := time.Since(start)
-	
+
 	if err == nil {
 		t.Error("Expected connection to fail without MongoDB instance")
 	}
@@ -100,10 +100,10 @@ func TestNewConnection_Timeout(t *testing.T) {
 
 func TestNewConnection_ContextHandling(t *testing.T) {
 	// Test that context cancellation works properly
-	
+
 	// Since NewConnection creates its own context, we can't directly test context cancellation
 	// but we can ensure the function handles context properly by checking it doesn't hang indefinitely
-	
+
 	done := make(chan bool, 1)
 	go func() {
 		_, err := NewConnection()
@@ -112,7 +112,7 @@ func TestNewConnection_ContextHandling(t *testing.T) {
 		}
 		done <- true
 	}()
-	
+
 	select {
 	case <-done:
 		// Function completed, which is expected
@@ -125,10 +125,10 @@ func TestNewConnection_DefaultValues(t *testing.T) {
 	// Clear environment variables to test defaults
 	originalURI := os.Getenv("MONGODB_URI")
 	originalDBName := os.Getenv("DATABASE_NAME")
-	
+
 	os.Unsetenv("MONGODB_URI")
 	os.Unsetenv("DATABASE_NAME")
-	
+
 	defer func() {
 		// Restore original environment variables
 		if originalURI != "" {
@@ -142,7 +142,7 @@ func TestNewConnection_DefaultValues(t *testing.T) {
 			os.Unsetenv("DATABASE_NAME")
 		}
 	}()
-	
+	t.Setenv("MONGODB_URI", "mongodb://test:27017")
 	// The function should use default values when env vars are not set
 	// We can't test the actual connection, but we can verify the function
 	// attempts to use the default values by checking the error message
@@ -150,7 +150,7 @@ func TestNewConnection_DefaultValues(t *testing.T) {
 	if err == nil {
 		t.Error("Expected connection to fail without MongoDB instance")
 	}
-	
+
 	// The error should indicate it tried to connect to localhost:27017 (default)
 	if err != nil && err.Error() == "" {
 		t.Error("Expected non-empty error message")
