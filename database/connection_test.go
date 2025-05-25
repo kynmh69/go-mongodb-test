@@ -98,10 +98,6 @@ func TestNewConnection_Timeout(t *testing.T) {
 func TestNewConnection_ContextHandling(t *testing.T) {
 	// Test that context cancellation works properly
 	
-	// Create a context that will be cancelled immediately
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-	
 	// Since NewConnection creates its own context, we can't directly test context cancellation
 	// but we can ensure the function handles context properly by checking it doesn't hang indefinitely
 	
