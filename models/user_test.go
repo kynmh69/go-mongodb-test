@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -154,7 +154,7 @@ func TestUpdateUserRequest_FieldUpdates(t *testing.T) {
 }
 
 func TestUser_StructFields(t *testing.T) {
-	id := primitive.NewObjectID()
+	id := bson.NewObjectID()
 	userID := "test123"
 	email := "test@example.com"
 	password := "hashedpassword"
