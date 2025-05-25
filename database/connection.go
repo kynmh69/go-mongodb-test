@@ -50,6 +50,7 @@ func NewConnection() (*Database, error) {
 	defer cancel()
   
 	client, err := mongo.Connect(
+		ctx,
 		options.Client().
 			ApplyURI(mongoURI).
 			SetAuth(credential),

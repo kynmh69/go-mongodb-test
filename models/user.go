@@ -3,15 +3,15 @@ package models
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
-	ID       primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	UserID   string             `json:"user_id" bson:"user_id"`
-	Email    string             `json:"email" bson:"email"`
-	Password string             `json:"-" bson:"password"`
+	ID       bson.ObjectID `json:"id" bson:"_id,omitempty"`
+	UserID   string        `json:"user_id" bson:"user_id"`
+	Email    string        `json:"email" bson:"email"`
+	Password string        `json:"-" bson:"password"`
 	CreatedAt time.Time         `json:"created_at" bson:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at" bson:"updated_at"`
 }
