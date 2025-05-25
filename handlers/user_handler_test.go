@@ -180,6 +180,52 @@ func TestUserHandler_CreateUser_MissingFields(t *testing.T) {
 	}
 }
 
+func TestUserHandler_CreateUser_ServiceError(t *testing.T) {
+	mockService := &mockUserService{
+		createUserFunc: func(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
+			return nil, errors.New("user with this user_id already exists")
+		},
+	}
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	reqBody := `{"user_id":"test123","email":"test@example.com","password":"password123"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.CreateUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("Expected status %d, got %d", http.StatusConflict, rec.Code)
+	}
+}
+
+func TestUserHandler_CreateUser_InvalidJSON(t *testing.T) {
+	mockService := &mockUserService{}
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	reqBody := `{"user_id":"test123",email:"test@example.com","password":"password123"}` // Invalid JSON
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.CreateUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
 func TestUserHandler_GetUser_Success(t *testing.T) {
 	userID := bson.NewObjectID()
 	mockService := &mockUserService{
@@ -213,6 +259,25 @@ func TestUserHandler_GetUser_Success(t *testing.T) {
 	}
 }
 
+func TestUserHandler_GetUser_MissingID(t *testing.T) {
+	mockService := &mockUserService{}
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.GetUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
 func TestUserHandler_GetUser_NotFound(t *testing.T) {
 	mockService := &mockUserService{
 		getUserByIDFunc: func(ctx context.Context, id string) (*models.User, error) {
@@ -237,6 +302,33 @@ func TestUserHandler_GetUser_NotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("Expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+func TestUserHandler_GetUser_ServerError(t *testing.T) {
+	mockService := &mockUserService{
+		getUserByIDFunc: func(ctx context.Context, id string) (*models.User, error) {
+			return nil, errors.New("database error")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	userID := bson.NewObjectID()
+	req := httptest.NewRequest(http.MethodGet, "/users/"+userID.Hex(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(userID.Hex())
+
+	err := handler.GetUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, rec.Code)
 	}
 }
 
@@ -291,6 +383,161 @@ func TestUserHandler_GetUserByUserID_MissingQuery(t *testing.T) {
 	}
 }
 
+func TestUserHandler_GetUserByUserID_NotFound(t *testing.T) {
+	mockService := &mockUserService{
+		getUserByUserIDFunc: func(ctx context.Context, userID string) (*models.User, error) {
+			return nil, nil
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users/search?user_id=nonexistent", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/users/search")
+	c.QueryParams().Set("user_id", "nonexistent")
+
+	err := handler.GetUserByUserID(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+func TestUserHandler_GetUserByUserID_ServerError(t *testing.T) {
+	mockService := &mockUserService{
+		getUserByUserIDFunc: func(ctx context.Context, userID string) (*models.User, error) {
+			return nil, errors.New("database error")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users/search?user_id=testuser", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/users/search")
+	c.QueryParams().Set("user_id", "testuser")
+
+	err := handler.GetUserByUserID(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+}
+
+func TestUserHandler_GetUserByEmail_Success(t *testing.T) {
+	mockService := &mockUserService{
+		getUserByEmailFunc: func(ctx context.Context, email string) (*models.User, error) {
+			return &models.User{
+				ID:        bson.NewObjectID(),
+				UserID:    "testuser",
+				Email:     email,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users/search?email=test@example.com", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/users/search")
+	c.QueryParams().Set("email", "test@example.com")
+
+	err := handler.GetUserByEmail(c)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestUserHandler_GetUserByEmail_MissingQuery(t *testing.T) {
+	mockService := &mockUserService{}
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users/search", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.GetUserByEmail(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestUserHandler_GetUserByEmail_NotFound(t *testing.T) {
+	mockService := &mockUserService{
+		getUserByEmailFunc: func(ctx context.Context, email string) (*models.User, error) {
+			return nil, nil
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users/search?email=nonexistent@example.com", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/users/search")
+	c.QueryParams().Set("email", "nonexistent@example.com")
+
+	err := handler.GetUserByEmail(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+func TestUserHandler_GetUserByEmail_ServerError(t *testing.T) {
+	mockService := &mockUserService{
+		getUserByEmailFunc: func(ctx context.Context, email string) (*models.User, error) {
+			return nil, errors.New("database error")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users/search?email=test@example.com", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/users/search")
+	c.QueryParams().Set("email", "test@example.com")
+
+	err := handler.GetUserByEmail(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+}
+
 func TestUserHandler_ListUsers_Success(t *testing.T) {
 	users := []*models.User{
 		{
@@ -341,6 +588,30 @@ func TestUserHandler_ListUsers_Success(t *testing.T) {
 	}
 }
 
+func TestUserHandler_ListUsers_ServerError(t *testing.T) {
+	mockService := &mockUserService{
+		listUsersFunc: func(ctx context.Context) ([]*models.User, error) {
+			return nil, errors.New("database error")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.ListUsers(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+}
+
 func TestUserHandler_DeleteUser_Success(t *testing.T) {
 	mockService := &mockUserService{
 		deleteUserFunc: func(ctx context.Context, id string) error {
@@ -365,6 +636,79 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestUserHandler_DeleteUser_MissingID(t *testing.T) {
+	mockService := &mockUserService{}
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodDelete, "/users/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.DeleteUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestUserHandler_DeleteUser_NotFound(t *testing.T) {
+	mockService := &mockUserService{
+		deleteUserFunc: func(ctx context.Context, id string) error {
+			return errors.New("user not found")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	userID := bson.NewObjectID()
+	req := httptest.NewRequest(http.MethodDelete, "/users/"+userID.Hex(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(userID.Hex())
+
+	err := handler.DeleteUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+func TestUserHandler_DeleteUser_ServerError(t *testing.T) {
+	mockService := &mockUserService{
+		deleteUserFunc: func(ctx context.Context, id string) error {
+			return errors.New("database error")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	userID := bson.NewObjectID()
+	req := httptest.NewRequest(http.MethodDelete, "/users/"+userID.Hex(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(userID.Hex())
+
+	err := handler.DeleteUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, rec.Code)
 	}
 }
 
@@ -402,5 +746,108 @@ func TestUserHandler_UpdateUser_Success(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestUserHandler_UpdateUser_MissingID(t *testing.T) {
+	mockService := &mockUserService{}
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	reqBody := `{"user_id":"updateduser","email":"updated@example.com"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/", strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpdateUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestUserHandler_UpdateUser_InvalidJSON(t *testing.T) {
+	userID := bson.NewObjectID()
+	mockService := &mockUserService{}
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	reqBody := `{"user_id":updateduser,"email":"updated@example.com"}` // Invalid JSON
+	req := httptest.NewRequest(http.MethodPut, "/users/"+userID.Hex(), strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(userID.Hex())
+
+	err := handler.UpdateUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestUserHandler_UpdateUser_NotFound(t *testing.T) {
+	userID := bson.NewObjectID()
+	mockService := &mockUserService{
+		updateUserFunc: func(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error) {
+			return nil, errors.New("user not found")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	reqBody := `{"user_id":"updateduser","email":"updated@example.com"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/"+userID.Hex(), strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(userID.Hex())
+
+	err := handler.UpdateUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+func TestUserHandler_UpdateUser_ConflictError(t *testing.T) {
+	userID := bson.NewObjectID()
+	mockService := &mockUserService{
+		updateUserFunc: func(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error) {
+			return nil, errors.New("user with this email already exists")
+		},
+	}
+
+	handler := NewUserHandler(mockService)
+	e := echo.New()
+
+	reqBody := `{"email":"existing@example.com"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/"+userID.Hex(), strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(userID.Hex())
+
+	err := handler.UpdateUser(c)
+	if err != nil {
+		t.Fatalf("Expected no error from handler, got %v", err)
+	}
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("Expected status %d, got %d", http.StatusConflict, rec.Code)
 	}
 }

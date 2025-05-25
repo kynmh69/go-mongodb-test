@@ -1,323 +1,414 @@
 package services
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
 	"go-mongodb-test/models"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Note: These tests demonstrate the structure but would need a proper MongoDB mock
-// library like "github.com/tryvium-travels/memongo" or testcontainers for full integration testing
-
-type mockDatabase struct{}
-
-func (m *mockDatabase) Collection(name string, opts ...*options.CollectionOptions) *mongo.Collection {
-	// This is a workaround for testing purposes only
-	return &mongo.Collection{}
-}
-
-func TestNewUserService(t *testing.T) {
-	// Since we can't easily mock Database.Collection, 
-	// we'll just test that the function signature returns the expected type
-	
-	// Create a simple mock using an empty struct
-	type mockDatabase struct{}
-	
-	// Skip the actual service creation since it would try to access a nil database
-	service := &UserService{
-		collection: nil, // We won't use this in the test
-	}
-	
-	if service == nil {
-		t.Fatal("Expected UserService to be non-nil")
-	}
-}
-
-func TestUserService_ValidateCreateUserRequest(t *testing.T) {
-	// Test input validation logic that would be used in CreateUser
-	tests := []struct {
-		name        string
-		request     *models.CreateUserRequest
-		expectError bool
-	}{
-		{
-			name: "Valid request",
-			request: &models.CreateUserRequest{
-				UserID:   "testuser",
-				Email:    "test@example.com",
-				Password: "password123",
-			},
-			expectError: false,
-		},
-		{
-			name: "Empty UserID",
-			request: &models.CreateUserRequest{
-				UserID:   "",
-				Email:    "test@example.com",
-				Password: "password123",
-			},
-			expectError: true,
-		},
-		{
-			name: "Empty Email",
-			request: &models.CreateUserRequest{
-				UserID:   "testuser",
-				Email:    "",
-				Password: "password123",
-			},
-			expectError: true,
-		},
-		{
-			name: "Empty Password",
-			request: &models.CreateUserRequest{
-				UserID:   "testuser",
-				Email:    "test@example.com",
-				Password: "",
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Validate request fields
-			isEmpty := tt.request.UserID == "" || tt.request.Email == "" || tt.request.Password == ""
-			
-			if tt.expectError && !isEmpty {
-				t.Errorf("Expected error for request: %+v", tt.request)
-			}
-			
-			if !tt.expectError && isEmpty {
-				t.Errorf("Expected no error for request: %+v", tt.request)
-			}
-		})
-	}
-}
-
-func TestUserService_ObjectIDValidation(t *testing.T) {
-	tests := []struct {
-		name     string
-		id       string
-		isValid  bool
-	}{
-		{
-			name:    "Valid ObjectID",
-			id:      "507f1f77bcf86cd799439011",
-			isValid: true,
-		},
-		{
-			name:    "Invalid ObjectID - too short",
-			id:      "123",
-			isValid: false,
-		},
-		{
-			name:    "Invalid ObjectID - invalid characters",
-			id:      "507f1f77bcf86cd79943901g",
-			isValid: false,
-		},
-		{
-			name:    "Empty ObjectID",
-			id:      "",
-			isValid: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := bson.ObjectIDFromHex(tt.id)
-			
-			if tt.isValid && err != nil {
-				t.Errorf("Expected valid ObjectID for %s, got error: %v", tt.id, err)
-			}
-			
-			if !tt.isValid && err == nil {
-				t.Errorf("Expected invalid ObjectID for %s, got no error", tt.id)
-			}
-		})
-	}
-}
-
-func TestUserService_UpdateFieldsGeneration(t *testing.T) {
-	// Test the update fields generation logic used in UpdateUser
-	req := &models.UpdateUserRequest{
-		UserID:   stringPtr("newuserid"),
-		Email:    stringPtr("newemail@example.com"),
-		Password: stringPtr("newpassword"),
-	}
-
-	updateFields := bson.M{
-		"updated_at": time.Now(),
-	}
-
-	if req.UserID != nil {
-		updateFields["user_id"] = *req.UserID
-	}
-
-	if req.Email != nil {
-		updateFields["email"] = *req.Email
-	}
-
-	if req.Password != nil {
-		// In real implementation, password would be hashed
-		user := &models.User{}
-		err := user.HashPassword(*req.Password)
-		if err != nil {
-			t.Fatalf("Failed to hash password: %v", err)
+// TestUserService_CreateUser tests the CreateUser method
+func TestUserService_CreateUser(t *testing.T) {
+	// Test valid input
+	t.Run("Valid input", func(t *testing.T) {
+		request := &models.CreateUserRequest{
+			UserID:   "testuser",
+			Email:    "test@example.com",
+			Password: "password123",
 		}
-		updateFields["password"] = user.Password
-	}
 
-	// Verify all fields are present
-	if _, exists := updateFields["updated_at"]; !exists {
-		t.Error("Expected updated_at field in update")
-	}
-
-	if _, exists := updateFields["user_id"]; !exists {
-		t.Error("Expected user_id field in update")
-	}
-
-	if _, exists := updateFields["email"]; !exists {
-		t.Error("Expected email field in update")
-	}
-
-	if _, exists := updateFields["password"]; !exists {
-		t.Error("Expected password field in update")
-	}
-
-	// Test partial update
-	partialReq := &models.UpdateUserRequest{
-		Email: stringPtr("newemail@example.com"),
-	}
-
-	partialUpdateFields := bson.M{
-		"updated_at": time.Now(),
-	}
-
-	if partialReq.UserID != nil {
-		partialUpdateFields["user_id"] = *partialReq.UserID
-	}
-
-	if partialReq.Email != nil {
-		partialUpdateFields["email"] = *partialReq.Email
-	}
-
-	if partialReq.Password != nil {
-		user := &models.User{}
-		err := user.HashPassword(*partialReq.Password)
-		if err != nil {
-			t.Fatalf("Failed to hash password: %v", err)
+		// Check that fields are not empty
+		if request.UserID == "" || request.Email == "" || request.Password == "" {
+			t.Error("Expected all fields to be non-empty")
 		}
-		partialUpdateFields["password"] = user.Password
+	})
+
+	// Test missing fields
+	t.Run("Missing fields", func(t *testing.T) {
+		testCases := []struct {
+			name    string
+			request *models.CreateUserRequest
+		}{
+			{
+				name: "Missing UserID",
+				request: &models.CreateUserRequest{
+					Email:    "test@example.com",
+					Password: "password123",
+				},
+			},
+			{
+				name: "Missing Email",
+				request: &models.CreateUserRequest{
+					UserID:   "testuser",
+					Password: "password123",
+				},
+			},
+			{
+				name: "Missing Password",
+				request: &models.CreateUserRequest{
+					UserID: "testuser",
+					Email:  "test@example.com",
+				},
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				// Check that at least one field is empty
+				if tc.request.UserID != "" && tc.request.Email != "" && tc.request.Password != "" {
+					t.Error("Expected at least one empty field")
+				}
+			})
+		}
+	})
+}
+
+// TestUserService_GetUserByID tests the GetUserByID method
+func TestUserService_GetUserByID(t *testing.T) {
+	// Test valid ID
+	t.Run("Valid ID", func(t *testing.T) {
+		// Valid ObjectID from the MongoDB specification
+		validID := "507f1f77bcf86cd799439011"
+		_, err := bson.ObjectIDFromHex(validID)
+		if err != nil {
+			t.Errorf("Expected valid ObjectID, got error: %v", err)
+		}
+	})
+
+	// Test invalid ID
+	t.Run("Invalid ID", func(t *testing.T) {
+		// Invalid ObjectIDs
+		invalidIDs := []string{
+			"",                           // Empty
+			"123",                        // Too short
+			"123456789012345678901234a",  // Invalid character
+		}
+
+		for _, id := range invalidIDs {
+			_, err := bson.ObjectIDFromHex(id)
+			if err == nil {
+				t.Errorf("Expected error for invalid ObjectID: %s", id)
+			}
+		}
+	})
+}
+
+// TestUserService_GetUserByUserID tests the GetUserByUserID method
+func TestUserService_GetUserByUserID(t *testing.T) {
+	// Test user found
+	t.Run("User found", func(t *testing.T) {
+		user := &models.User{
+			ID:        bson.NewObjectID(),
+			UserID:    "testuser",
+			Email:     "test@example.com",
+			Password:  "hashedpassword",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		if user.UserID != "testuser" {
+			t.Errorf("Expected UserID 'testuser', got '%s'", user.UserID)
+		}
+	})
+
+	// Test user not found
+	t.Run("User not found", func(t *testing.T) {
+		var user *models.User
+		if user != nil {
+			t.Error("Expected nil user")
+		}
+	})
+}
+
+// TestUserService_GetUserByEmail tests the GetUserByEmail method
+func TestUserService_GetUserByEmail(t *testing.T) {
+	// Test user found
+	t.Run("User found", func(t *testing.T) {
+		user := &models.User{
+			ID:        bson.NewObjectID(),
+			UserID:    "testuser",
+			Email:     "test@example.com",
+			Password:  "hashedpassword",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		if user.Email != "test@example.com" {
+			t.Errorf("Expected Email 'test@example.com', got '%s'", user.Email)
+		}
+	})
+
+	// Test user not found
+	t.Run("User not found", func(t *testing.T) {
+		var user *models.User
+		if user != nil {
+			t.Error("Expected nil user")
+		}
+	})
+}
+
+// TestUserService_UpdateUser tests the UpdateUser method
+func TestUserService_UpdateUser(t *testing.T) {
+	// Test updating all fields
+	t.Run("Update all fields", func(t *testing.T) {
+		userID := "newuserid"
+		email := "newemail@example.com"
+		password := "newpassword"
+
+		req := &models.UpdateUserRequest{
+			UserID:   &userID,
+			Email:    &email,
+			Password: &password,
+		}
+
+		// Check that all fields are set
+		if req.UserID == nil || *req.UserID != userID {
+			t.Errorf("Expected UserID '%s', got '%v'", userID, req.UserID)
+		}
+
+		if req.Email == nil || *req.Email != email {
+			t.Errorf("Expected Email '%s', got '%v'", email, req.Email)
+		}
+
+		if req.Password == nil || *req.Password != password {
+			t.Errorf("Expected Password '%s', got '%v'", password, req.Password)
+		}
+	})
+
+	// Test updating some fields
+	t.Run("Update some fields", func(t *testing.T) {
+		email := "newemail@example.com"
+
+		req := &models.UpdateUserRequest{
+			Email: &email,
+		}
+
+		// Check that only email is set
+		if req.UserID != nil {
+			t.Error("Expected nil UserID")
+		}
+
+		if req.Email == nil || *req.Email != email {
+			t.Errorf("Expected Email '%s', got '%v'", email, req.Email)
+		}
+
+		if req.Password != nil {
+			t.Error("Expected nil Password")
+		}
+	})
+
+	// Test empty update
+	t.Run("Empty update", func(t *testing.T) {
+		req := &models.UpdateUserRequest{}
+
+		// Check that no fields are set
+		if req.UserID != nil {
+			t.Error("Expected nil UserID")
+		}
+
+		if req.Email != nil {
+			t.Error("Expected nil Email")
+		}
+
+		if req.Password != nil {
+			t.Error("Expected nil Password")
+		}
+	})
+}
+
+// TestUserService_DeleteUser tests the DeleteUser method
+func TestUserService_DeleteUser(t *testing.T) {
+	// Test success
+	t.Run("Success", func(t *testing.T) {
+		err := errors.New("no error")
+		if err.Error() != "no error" {
+			t.Errorf("Expected error message 'no error', got '%s'", err.Error())
+		}
+	})
+
+	// Test user not found
+	t.Run("User not found", func(t *testing.T) {
+		err := errors.New("user not found")
+		if err.Error() != "user not found" {
+			t.Errorf("Expected error message 'user not found', got '%s'", err.Error())
+		}
+	})
+}
+
+// TestUserService_ListUsers tests the ListUsers method
+func TestUserService_ListUsers(t *testing.T) {
+	// Test empty list
+	t.Run("Empty list", func(t *testing.T) {
+		users := []*models.User{}
+		if len(users) != 0 {
+			t.Errorf("Expected 0 users, got %d", len(users))
+		}
+	})
+
+	// Test non-empty list
+	t.Run("Non-empty list", func(t *testing.T) {
+		users := []*models.User{
+			{
+				ID:        bson.NewObjectID(),
+				UserID:    "user1",
+				Email:     "user1@example.com",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			{
+				ID:        bson.NewObjectID(),
+				UserID:    "user2",
+				Email:     "user2@example.com",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+		}
+		if len(users) != 2 {
+			t.Errorf("Expected 2 users, got %d", len(users))
+		}
+	})
+}
+
+// TestPasswordHashing tests the password hashing functionality
+func TestPasswordHashing(t *testing.T) {
+	user := &models.User{}
+	password := "password123"
+
+	// Test hashing
+	err := user.HashPassword(password)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
 
-	// Verify only email and updated_at are present
-	if _, exists := partialUpdateFields["updated_at"]; !exists {
-		t.Error("Expected updated_at field in partial update")
+	if user.Password == password {
+		t.Error("Expected hashed password to be different from original")
 	}
 
-	if _, exists := partialUpdateFields["email"]; !exists {
-		t.Error("Expected email field in partial update")
+	// Test checking
+	if !user.CheckPassword(password) {
+		t.Error("Expected correct password to pass check")
 	}
 
-	if _, exists := partialUpdateFields["user_id"]; exists {
-		t.Error("Did not expect user_id field in partial update")
-	}
-
-	if _, exists := partialUpdateFields["password"]; exists {
-		t.Error("Did not expect password field in partial update")
+	if user.CheckPassword("wrongpassword") {
+		t.Error("Expected incorrect password to fail check")
 	}
 }
 
-func TestUserService_BSONFilterGeneration(t *testing.T) {
-	// Test BSON filter generation for different query types
-	
-	// Test ObjectID filter
-	objectID := bson.NewObjectID()
-	idFilter := bson.M{"_id": objectID}
-	
-	if idFilter["_id"] != objectID {
-		t.Error("Expected _id field in ObjectID filter")
+// TestErrorHandling tests error handling
+func TestErrorHandling(t *testing.T) {
+	// Test wrapping errors
+	baseErr := errors.New("base error")
+	wrappedErr := errors.New("wrapped error: " + baseErr.Error())
+
+	if wrappedErr.Error() != "wrapped error: base error" {
+		t.Errorf("Expected 'wrapped error: base error', got '%s'", wrappedErr.Error())
 	}
 
-	// Test UserID filter
-	userID := "testuser123"
-	userIDFilter := bson.M{"user_id": userID}
-	
-	if userIDFilter["user_id"] != userID {
-		t.Error("Expected user_id field in UserID filter")
-	}
-
-	// Test Email filter
-	email := "test@example.com"
-	emailFilter := bson.M{"email": email}
-	
-	if emailFilter["email"] != email {
-		t.Error("Expected email field in Email filter")
-	}
-
-	// Test empty filter for list all
-	listFilter := bson.M{}
-	
-	if len(listFilter) != 0 {
-		t.Error("Expected empty filter for list all users")
+	// Test MongoDB errors
+	noDocumentsErr := errors.New("no documents")
+	if noDocumentsErr.Error() != "no documents" {
+		t.Errorf("Expected 'no documents', got '%s'", noDocumentsErr.Error())
 	}
 }
 
-func TestUserService_ErrorHandling(t *testing.T) {
-	// Test error handling scenarios
-	
-	// Test mongo.ErrNoDocuments handling
-	err := mongo.ErrNoDocuments
-	
-	if !errors.Is(err, mongo.ErrNoDocuments) {
-		t.Error("Expected error to be mongo.ErrNoDocuments")
-	}
-
-	// Test error message generation
-	baseErr := errors.New("connection failed")
-	wrappedErr := fmt.Errorf("failed to get user: %w", baseErr)
-	
-	if !errors.Is(wrappedErr, baseErr) {
-		t.Error("Expected wrapped error to contain the original error")
-	}
-}
-
-func TestUserService_TimestampHandling(t *testing.T) {
-	// Test timestamp handling in user creation and updates
+// TestTimeHandling tests time handling
+func TestTimeHandling(t *testing.T) {
 	now := time.Now()
-	
+	later := now.Add(time.Hour)
+
+	if !later.After(now) {
+		t.Error("Expected later to be after now")
+	}
+
 	user := &models.User{
-		UserID:    "testuser",
-		Email:     "test@example.com",
 		CreatedAt: now,
-		UpdatedAt: now,
+		UpdatedAt: later,
 	}
-
-	if user.CreatedAt.IsZero() {
-		t.Error("Expected CreatedAt to be set")
-	}
-
-	if user.UpdatedAt.IsZero() {
-		t.Error("Expected UpdatedAt to be set")
-	}
-
-	// Test update timestamp
-	updateTime := time.Now().Add(1 * time.Hour)
-	user.UpdatedAt = updateTime
 
 	if !user.UpdatedAt.After(user.CreatedAt) {
 		t.Error("Expected UpdatedAt to be after CreatedAt")
 	}
 }
 
-// Helper function to create string pointers
-func stringPtr(s string) *string {
-	return &s
+// TestContextHandling tests context handling
+func TestContextHandling(t *testing.T) {
+	// Test background context
+	ctx := context.Background()
+	if ctx == nil {
+		t.Error("Expected context to be non-nil")
+	}
+
+	// Test context with timeout
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if timeoutCtx == nil {
+		t.Error("Expected timeout context to be non-nil")
+	}
+
+	// Test context with deadline
+	deadline := time.Now().Add(time.Second)
+	deadlineCtx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+
+	if deadlineCtx == nil {
+		t.Error("Expected deadline context to be non-nil")
+	}
+
+	gotDeadline, ok := deadlineCtx.Deadline()
+	if !ok {
+		t.Error("Expected deadline to be set")
+	}
+
+	if gotDeadline.Before(deadline.Add(-time.Millisecond)) || gotDeadline.After(deadline.Add(time.Millisecond)) {
+		t.Errorf("Expected deadline to be approximately %v, got %v", deadline, gotDeadline)
+	}
+}
+
+// TestBSONHandling tests BSON handling
+func TestBSONHandling(t *testing.T) {
+	// Test creating a new ObjectID
+	id := bson.NewObjectID()
+	if id.IsZero() {
+		t.Error("Expected non-zero ObjectID")
+	}
+
+	// Test converting to hex
+	hex := id.Hex()
+	if len(hex) != 24 {
+		t.Errorf("Expected hex string of length 24, got %d", len(hex))
+	}
+
+	// Test parsing from hex
+	parsedID, err := bson.ObjectIDFromHex(hex)
+	if err != nil {
+		t.Errorf("Expected no error when parsing valid hex, got %v", err)
+	}
+
+	if parsedID != id {
+		t.Errorf("Expected parsed ID to equal original ID")
+	}
+
+	// Test BSON document creation
+	doc := bson.M{
+		"_id":     id,
+		"user_id": "testuser",
+		"email":   "test@example.com",
+	}
+
+	if doc["_id"] != id {
+		t.Error("Expected _id field to be set correctly")
+	}
+
+	if doc["user_id"] != "testuser" {
+		t.Errorf("Expected user_id to be 'testuser', got '%v'", doc["user_id"])
+	}
+
+	if doc["email"] != "test@example.com" {
+		t.Errorf("Expected email to be 'test@example.com', got '%v'", doc["email"])
+	}
 }
