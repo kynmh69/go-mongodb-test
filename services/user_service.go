@@ -9,7 +9,6 @@ import (
 	"go-mongodb-test/models"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -51,12 +50,12 @@ func (s *UserService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	user.ID = result.InsertedID.(primitive.ObjectID)
+	user.ID = result.InsertedID.(bson.ObjectID)
 	return user, nil
 }
 
 func (s *UserService) GetUserByID(ctx context.Context, id string) (*models.User, error) {
-	objectID, err := primitive.ObjectIDFromHex(id)
+	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
@@ -100,7 +99,7 @@ func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models
 }
 
 func (s *UserService) UpdateUser(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error) {
-	objectID, err := primitive.ObjectIDFromHex(id)
+	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
@@ -148,7 +147,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, req *models.Upd
 }
 
 func (s *UserService) DeleteUser(ctx context.Context, id string) error {
-	objectID, err := primitive.ObjectIDFromHex(id)
+	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return fmt.Errorf("invalid user ID: %w", err)
 	}

@@ -3,12 +3,12 @@ package models
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/v2/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
-	ID       primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	ID       bson.ObjectID `json:"id" bson:"_id,omitempty"`
 	UserID   string             `json:"user_id" bson:"user_id"`
 	Email    string             `json:"email" bson:"email"`
 	Password string             `json:"-" bson:"password"`
