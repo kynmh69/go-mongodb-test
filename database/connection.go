@@ -12,6 +12,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const AuthSource = "admin"
+
 type Database struct {
 	Client *mongo.Client
 	DB     *mongo.Database
@@ -28,10 +30,31 @@ func NewConnection() (*Database, error) {
 		dbName = "user_management"
 	}
 
+	dbUser := os.Getenv("MONGODB_USER")
+	if dbUser == "" {
+		dbUser = "admin"
+	}
+
+	dbPassword := os.Getenv("MONGODB_PASSWORD")
+	if dbPassword == "" {
+		dbPassword = "password"
+	}
+
+	credential := options.Credential{
+		Username:   dbUser,
+		Password:   dbPassword,
+		AuthSource: AuthSource,
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+  
+	client, err := mongo.Connect(
+		options.Client().
+			ApplyURI(mongoURI).
+			SetAuth(credential),
+	)
+  
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}

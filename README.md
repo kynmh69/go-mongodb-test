@@ -1,6 +1,6 @@
-# Go MongoDB User Management API
+# Go MongoDB User Management System
 
-Echo フレームワークを使用したユーザー管理 REST API です。MongoDB をデータベースとして使用し、完全な CRUD 操作を提供します。
+Echo フレームワークを使用したユーザー管理 REST API と Next.js フロントエンドの統合システムです。MongoDB をデータベースとして使用し、完全な CRUD 操作を提供します。
 
 ## 機能
 
@@ -13,10 +13,18 @@ Echo フレームワークを使用したユーザー管理 REST API です。Mo
 
 ## 技術スタック
 
+### バックエンド
 - **Go**: 1.24
 - **Echo**: v4 (Web フレームワーク)
 - **MongoDB**: Latest (データベース)
 - **bcrypt**: パスワード暗号化
+
+### フロントエンド
+- **Next.js**: 15.1.3 (React フレームワーク)
+- **TypeScript**: 型安全性
+- **Tailwind CSS**: スタイリング
+- **shadcn/ui**: UI コンポーネントライブラリ
+- **Radix UI**: アクセシブルなプリミティブ
 
 ## セットアップ
 
@@ -39,11 +47,23 @@ cp .env.example .env
 # 必要に応じて .env ファイルを編集
 ```
 
-### 4. アプリケーションの起動
+### 4. バックエンドの起動
 
 ```bash
 go run main.go
 ```
+
+### 5. フロントエンドの起動
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+アプリケーションは以下のURLでアクセスできます：
+- **フロントエンド**: http://localhost:3000
+- **バックエンド API**: http://localhost:8080
 
 ## API エンドポイント
 
@@ -100,19 +120,52 @@ type User struct {
 }
 ```
 
+## プロジェクト構成
+
+```
+go-mongodb-test/
+├── database/           # データベース接続
+├── handlers/           # HTTP ハンドラー
+├── models/            # データモデル
+├── services/          # ビジネスロジック
+├── frontend/          # Next.js フロントエンド
+│   ├── src/
+│   │   ├── app/       # Next.js app directory
+│   │   ├── components/ # React コンポーネント
+│   │   └── lib/       # ユーティリティと API クライアント
+│   └── README.md      # フロントエンド専用README
+├── main.go            # メインアプリケーション
+├── docker-compose.yml # MongoDB コンテナ設定
+└── README.md          # このファイル
+```
+
 ## 開発
 
-### テスト実行
+### バックエンド
 ```bash
+# テスト実行
 go test ./...
-```
 
-### フォーマット
-```bash
+# フォーマット
 go fmt ./...
+
+# 依存関係の更新
+go mod tidy
 ```
 
-### 依存関係の更新
+### フロントエンド
 ```bash
-go mod tidy
+cd frontend
+
+# 開発サーバー起動
+npm run dev
+
+# ビルド
+npm run build
+
+# 本番サーバー起動
+npm start
+
+# リント
+npm run lint
 ```
