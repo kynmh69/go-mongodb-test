@@ -18,7 +18,12 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	defer db.Close()
+	defer func(db *database.Database) {
+		err := db.Close()
+		if err != nil {
+			log.Fatalln("Failed to close database:", err)
+		}
+	}(db)
 
 	// Initialize services
 	userService := services.NewUserService(db.DB)
@@ -54,18 +59,18 @@ func main() {
 
 	// User routes
 	users := api.Group("/users")
-	users.POST("", userHandler.CreateUser)        // Create user
-	users.GET("", userHandler.ListUsers)          // List all users
-	users.GET("/search", userHandler.GetUserByUserID) // Search by user_id (query param)
+	users.POST("", userHandler.CreateUser)                 // Create user
+	users.GET("", userHandler.ListUsers)                   // List all users
+	users.GET("/search", userHandler.GetUserByUserID)      // Search by user_id (query param)
 	users.GET("/search/email", userHandler.GetUserByEmail) // Search by email (query param)
-	users.GET("/:id", userHandler.GetUser)        // Get user by MongoDB ID
-	users.PUT("/:id", userHandler.UpdateUser)     // Update user
-	users.DELETE("/:id", userHandler.DeleteUser)  // Delete user
+	users.GET("/:id", userHandler.GetUser)                 // Get user by MongoDB ID
+	users.PUT("/:id", userHandler.UpdateUser)              // Update user
+	users.DELETE("/:id", userHandler.DeleteUser)           // Delete user
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{
-			"status": "healthy",
+			"status":  "healthy",
 			"message": "User management service is running",
 		})
 	})
