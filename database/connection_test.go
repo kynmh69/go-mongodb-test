@@ -117,7 +117,7 @@ func TestNewConnection_ContextHandling(t *testing.T) {
 	select {
 	case <-done:
 		// Function completed, which is expected
-	case <-time.After(35 * time.Second):
+	case <-time.After(5 * time.Second): // Reduced timeout for faster feedback during testing
 		t.Error("NewConnection took too long, context timeout might not be working")
 	}
 }
