@@ -8,8 +8,10 @@ import (
 
 	"go-mongodb-test/models"
 
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Note: These tests demonstrate the structure but would need a proper MongoDB mock
@@ -130,7 +132,7 @@ func TestUserService_ObjectIDValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := bson.ObjectIDFromHex(tt.id)
+			_, err := primitive.ObjectIDFromHex(tt.id)
 			
 			if tt.isValid && err != nil {
 				t.Errorf("Expected valid ObjectID for %s, got error: %v", tt.id, err)
@@ -238,7 +240,7 @@ func TestUserService_BSONFilterGeneration(t *testing.T) {
 	// Test BSON filter generation for different query types
 	
 	// Test ObjectID filter
-	objectID := bson.NewObjectID()
+	objectID := primitive.NewObjectID()
 	idFilter := bson.M{"_id": objectID}
 	
 	if idFilter["_id"] != objectID {

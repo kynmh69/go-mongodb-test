@@ -66,18 +66,17 @@ func TestNewConnection_Environment(t *testing.T) {
 }
 
 func TestDatabase_Close(t *testing.T) {
-	// Test closing a nil client (should not panic)
+	// Test closing a nil client (should return error)
 	db := &Database{}
 	
-	// Since d.Client is nil, we expect it to panic
-	// Let's handle that gracefully in the test
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic when closing database with nil client, but no panic occurred")
-		}
-	}()
+	err := db.Close()
+	if err == nil {
+		t.Error("Expected error when closing database with nil client, but got nil")
+	}
 	
-	_ = db.Close() // This should panic due to nil Client
+	if err != nil && err.Error() != "client is nil" {
+		t.Errorf("Expected error message 'client is nil', got '%s'", err.Error())
+	}
 }
 
 func TestNewConnection_Timeout(t *testing.T) {

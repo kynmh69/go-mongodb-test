@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,7 @@ import (
 	"go-mongodb-test/models"
 
 	"github.com/labstack/echo/v4"
-	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Mock UserService for testing
@@ -95,7 +96,7 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 	mockService := &mockUserService{
 		createUserFunc: func(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
 			return &models.User{
-				ID:        bson.NewObjectID(),
+				ID:        primitive.NewObjectID(),
 				UserID:    req.UserID,
 				Email:     req.Email,
 				CreatedAt: time.Now(),
@@ -122,8 +123,8 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 		t.Fatalf("Expected no error from handler, got %v", err)
 	}
 
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	if rec.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, rec.Code)
 	}
 }
 
@@ -180,7 +181,7 @@ func TestUserHandler_CreateUser_MissingFields(t *testing.T) {
 }
 
 func TestUserHandler_GetUser_Success(t *testing.T) {
-	userID := bson.NewObjectID()
+	userID := primitive.NewObjectID()
 	mockService := &mockUserService{
 		getUserByIDFunc: func(ctx context.Context, id string) (*models.User, error) {
 			return &models.User{
@@ -222,7 +223,7 @@ func TestUserHandler_GetUser_NotFound(t *testing.T) {
 	handler := NewUserHandler(mockService)
 	e := echo.New()
 
-	userID := bson.NewObjectID()
+	userID := primitive.NewObjectID()
 	req := httptest.NewRequest(http.MethodGet, "/users/"+userID.Hex(), nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -243,7 +244,7 @@ func TestUserHandler_GetUserByUserID_Success(t *testing.T) {
 	mockService := &mockUserService{
 		getUserByUserIDFunc: func(ctx context.Context, userID string) (*models.User, error) {
 			return &models.User{
-				ID:        bson.NewObjectID(),
+				ID:        primitive.NewObjectID(),
 				UserID:    userID,
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
@@ -293,14 +294,14 @@ func TestUserHandler_GetUserByUserID_MissingQuery(t *testing.T) {
 func TestUserHandler_ListUsers_Success(t *testing.T) {
 	users := []*models.User{
 		{
-			ID:        bson.NewObjectID(),
+			ID:        primitive.NewObjectID(),
 			UserID:    "user1",
 			Email:     "user1@example.com",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
 		{
-			ID:        bson.NewObjectID(),
+			ID:        primitive.NewObjectID(),
 			UserID:    "user2",
 			Email:     "user2@example.com",
 			CreatedAt: time.Now(),
@@ -350,7 +351,7 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 	handler := NewUserHandler(mockService)
 	e := echo.New()
 
-	userID := bson.NewObjectID()
+	userID := primitive.NewObjectID()
 	req := httptest.NewRequest(http.MethodDelete, "/users/"+userID.Hex(), nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -359,20 +360,16 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 
 	err := handler.DeleteUser(c)
 	if err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
+		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	// Check response fields
-	if resp["user_id"] != "test123" {
-		t.Errorf("Expected user_id test123, got %v", resp["user_id"])
-	}
-	if resp["email"] != "test@example.com" {
-		t.Errorf("Expected email test@example.com, got %v", resp["email"])
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 }
 
 func TestUserHandler_UpdateUser_Success(t *testing.T) {
-	userID := bson.NewObjectID()
+	userID := primitive.NewObjectID()
 	updatedUser := &models.User{
 		ID:        userID,
 		UserID:    "updateduser",
@@ -381,24 +378,29 @@ func TestUserHandler_UpdateUser_Success(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	// Create Echo instance
+	mockService := &mockUserService{
+		updateUserFunc: func(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error) {
+			return updatedUser, nil
+		},
+	}
+
+	handler := NewUserHandler(mockService)
 	e := echo.New()
 
-	// Create request with missing fields
-	reqBody := `{"user_id":"","email":"test@example.com","password":""}`
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(reqBody))
+	reqBody := `{"user_id":"updateduser","email":"updated@example.com"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/"+userID.Hex(), strings.NewReader(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(userID.Hex())
 
-	// Test handler
-	err := handler.CreateUser(c)
+	err := handler.UpdateUser(c)
 	if err != nil {
-		t.Fatalf("Expected no error to be returned, got %v", err)
+		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	// Check status code
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 }
