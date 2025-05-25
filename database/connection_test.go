@@ -1,7 +1,6 @@
 package database
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"

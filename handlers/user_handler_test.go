@@ -13,9 +13,10 @@ import (
 	"time"
 
 	"go-mongodb-test/models"
+	"go-mongodb-test/services"
 
 	"github.com/labstack/echo/v4"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // Mock UserService for testing
@@ -95,7 +96,7 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 	mockService := &mockUserService{
 		createUserFunc: func(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
 			return &models.User{
-				ID:        primitive.NewObjectID(),
+				ID:        bson.NewObjectID(),
 				UserID:    req.UserID,
 				Email:     req.Email,
 				CreatedAt: time.Now(),
