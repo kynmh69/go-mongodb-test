@@ -30,6 +30,56 @@ type mockUserService struct {
 	listUsersFunc       func(ctx context.Context) ([]*models.User, error)
 }
 
+// Implement services.UserService interface
+func (m *mockUserService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
+	if m.createUserFunc != nil {
+		return m.createUserFunc(ctx, req)
+	}
+	return nil, errors.New("CreateUser not implemented")
+}
+
+func (m *mockUserService) GetUserByID(ctx context.Context, id string) (*models.User, error) {
+	if m.getUserByIDFunc != nil {
+		return m.getUserByIDFunc(ctx, id)
+	}
+	return nil, errors.New("GetUserByID not implemented")
+}
+
+func (m *mockUserService) GetUserByUserID(ctx context.Context, userID string) (*models.User, error) {
+	if m.getUserByUserIDFunc != nil {
+		return m.getUserByUserIDFunc(ctx, userID)
+	}
+	return nil, errors.New("GetUserByUserID not implemented")
+}
+
+func (m *mockUserService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	if m.getUserByEmailFunc != nil {
+		return m.getUserByEmailFunc(ctx, email)
+	}
+	return nil, errors.New("GetUserByEmail not implemented")
+}
+
+func (m *mockUserService) UpdateUser(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error) {
+	if m.updateUserFunc != nil {
+		return m.updateUserFunc(ctx, id, req)
+	}
+	return nil, errors.New("UpdateUser not implemented")
+}
+
+func (m *mockUserService) DeleteUser(ctx context.Context, id string) error {
+	if m.deleteUserFunc != nil {
+		return m.deleteUserFunc(ctx, id)
+	}
+	return errors.New("DeleteUser not implemented")
+}
+
+func (m *mockUserService) ListUsers(ctx context.Context) ([]*models.User, error) {
+	if m.listUsersFunc != nil {
+		return m.listUsersFunc(ctx)
+	}
+	return nil, errors.New("ListUsers not implemented")
+}
+
 func (m *mockUserService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
 	if m.createUserFunc != nil {
 		return m.createUserFunc(ctx, req)
@@ -214,7 +264,7 @@ func TestUserHandler_CreateUser_MissingFields(t *testing.T) {
 }
 
 func TestUserHandler_GetUser_Success(t *testing.T) {
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	mockService := &mockUserService{
 		getUserByIDFunc: func(ctx context.Context, id string) (*models.User, error) {
 			return &models.User{
@@ -277,7 +327,7 @@ func TestUserHandler_GetUserByUserID_Success(t *testing.T) {
 	mockService := &mockUserService{
 		getUserByUserIDFunc: func(ctx context.Context, userID string) (*models.User, error) {
 			return &models.User{
-				ID:        primitive.NewObjectID(),
+				ID:        bson.NewObjectID(),
 				UserID:    userID,
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
@@ -325,14 +375,14 @@ func TestUserHandler_GetUserByUserID_MissingParam(t *testing.T) {
 func TestUserHandler_ListUsers_Success(t *testing.T) {
 	users := []*models.User{
 		{
-			ID:        primitive.NewObjectID(),
+			ID:        bson.NewObjectID(),
 			UserID:    "user1",
 			Email:     "user1@example.com",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
 		{
-			ID:        primitive.NewObjectID(),
+			ID:        bson.NewObjectID(),
 			UserID:    "user2",
 			Email:     "user2@example.com",
 			CreatedAt: time.Now(),
@@ -382,7 +432,7 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 	handler := NewUserHandler(mockService)
 	e := echo.New()
 
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	req := httptest.NewRequest(http.MethodDelete, "/users/"+userID.Hex(), nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -409,7 +459,7 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 }
 
 func TestUserHandler_UpdateUser_Success(t *testing.T) {
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	updatedUser := &models.User{
 		ID:        userID,
 		UserID:    "updateduser",
