@@ -1,19 +1,30 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"go-mongodb-test/models"
-	"go-mongodb-test/services"
 
 	"github.com/labstack/echo/v4"
 )
 
 type UserHandler struct {
-	userService *services.UserService
+	userService UserServiceInterface
 }
 
-func NewUserHandler(userService *services.UserService) *UserHandler {
+// Define the interface based on the methods we need
+type UserServiceInterface interface {
+	CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error)
+	GetUserByID(ctx context.Context, id string) (*models.User, error)
+	GetUserByUserID(ctx context.Context, userID string) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	UpdateUser(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error)
+	DeleteUser(ctx context.Context, id string) error
+	ListUsers(ctx context.Context) ([]*models.User, error)
+}
+
+func NewUserHandler(userService UserServiceInterface) *UserHandler {
 	return &UserHandler{
 		userService: userService,
 	}
