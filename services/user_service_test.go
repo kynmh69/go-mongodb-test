@@ -1,8 +1,8 @@
 package services
 
 import (
-	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,22 +11,21 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
-
-// Mock Collection for testing
-type mockCollection struct {
-	insertOneFunc    func(ctx context.Context, document interface{}) (*mongo.InsertOneResult, error)
-	findOneFunc      func(ctx context.Context, filter interface{}) *mongo.SingleResult
-	updateOneFunc    func(ctx context.Context, filter interface{}, update interface{}) (*mongo.UpdateResult, error)
-	deleteOneFunc    func(ctx context.Context, filter interface{}) (*mongo.DeleteResult, error)
-	findFunc         func(ctx context.Context, filter interface{}) (*mongo.Cursor, error)
-}
 
 // Note: These tests demonstrate the structure but would need a proper MongoDB mock
 // library like "github.com/tryvium-travels/memongo" or testcontainers for full integration testing
 
+type mockDatabase struct{}
+
+func (m *mockDatabase) Collection(name string, opts ...*options.CollectionOptions) *mongo.Collection {
+	// This is a workaround for testing purposes only
+	return &mongo.Collection{}
+}
+
 func TestNewUserService(t *testing.T) {
-	db := &mongo.Database{}
+	db := &mockDatabase{}
 	service := NewUserService(db)
 
 	if service == nil {
