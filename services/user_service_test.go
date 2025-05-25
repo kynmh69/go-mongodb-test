@@ -3,14 +3,14 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"go-mongodb-test/models"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // Mock Collection for testing
@@ -129,7 +129,7 @@ func TestUserService_ObjectIDValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := primitive.ObjectIDFromHex(tt.id)
+			_, err := bson.ObjectIDFromHex(tt.id)
 			
 			if tt.isValid && err != nil {
 				t.Errorf("Expected valid ObjectID for %s, got error: %v", tt.id, err)
@@ -237,7 +237,7 @@ func TestUserService_BSONFilterGeneration(t *testing.T) {
 	// Test BSON filter generation for different query types
 	
 	// Test ObjectID filter
-	objectID := primitive.NewObjectID()
+	objectID := bson.NewObjectID()
 	idFilter := bson.M{"_id": objectID}
 	
 	if idFilter["_id"] != objectID {

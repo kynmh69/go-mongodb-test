@@ -15,7 +15,7 @@ import (
 	"go-mongodb-test/models"
 
 	"github.com/labstack/echo/v4"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // Mock UserService for testing
@@ -95,7 +95,7 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 	mockService := &mockUserService{
 		createUserFunc: func(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
 			return &models.User{
-				ID:        primitive.NewObjectID(),
+				ID:        bson.NewObjectID(),
 				UserID:    req.UserID,
 				Email:     req.Email,
 				CreatedAt: time.Now(),
@@ -213,7 +213,7 @@ func TestUserHandler_CreateUser_MissingFields(t *testing.T) {
 }
 
 func TestUserHandler_GetUser_Success(t *testing.T) {
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	mockService := &mockUserService{
 		getUserByIDFunc: func(ctx context.Context, id string) (*models.User, error) {
 			return &models.User{
@@ -255,7 +255,7 @@ func TestUserHandler_GetUser_NotFound(t *testing.T) {
 	handler := NewUserHandler(mockService)
 	e := echo.New()
 
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	req := httptest.NewRequest(http.MethodGet, "/users/"+userID.Hex(), nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -276,7 +276,7 @@ func TestUserHandler_GetUserByUserID_Success(t *testing.T) {
 	mockService := &mockUserService{
 		getUserByUserIDFunc: func(ctx context.Context, userID string) (*models.User, error) {
 			return &models.User{
-				ID:        primitive.NewObjectID(),
+				ID:        bson.NewObjectID(),
 				UserID:    userID,
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
@@ -324,14 +324,14 @@ func TestUserHandler_GetUserByUserID_MissingParam(t *testing.T) {
 func TestUserHandler_ListUsers_Success(t *testing.T) {
 	users := []*models.User{
 		{
-			ID:        primitive.NewObjectID(),
+			ID:        bson.NewObjectID(),
 			UserID:    "user1",
 			Email:     "user1@example.com",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
 		{
-			ID:        primitive.NewObjectID(),
+			ID:        bson.NewObjectID(),
 			UserID:    "user2",
 			Email:     "user2@example.com",
 			CreatedAt: time.Now(),
@@ -381,7 +381,7 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 	handler := NewUserHandler(mockService)
 	e := echo.New()
 
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	req := httptest.NewRequest(http.MethodDelete, "/users/"+userID.Hex(), nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -408,7 +408,7 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 }
 
 func TestUserHandler_UpdateUser_Success(t *testing.T) {
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	updatedUser := &models.User{
 		ID:        userID,
 		UserID:    "updateduser",
