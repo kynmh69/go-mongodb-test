@@ -30,12 +30,12 @@ func NewConnection() (*Database, error) {
 	}
 
 	dbUser := os.Getenv("MONGODB_USER")
-	if dbUser != "" {
+	if dbUser == "" {
 		dbUser = "admin"
 	}
 
 	dbPassword := os.Getenv("MONGODB_PASSWORD")
-	if dbPassword != "" {
+	if dbPassword == "" {
 		dbPassword = "password"
 	}
 
