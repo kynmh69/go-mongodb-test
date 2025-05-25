@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"go-mongodb-test/models"
-	"go-mongodb-test/services"
 
 	"github.com/labstack/echo/v4"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -30,7 +28,7 @@ type mockUserService struct {
 	listUsersFunc       func(ctx context.Context) ([]*models.User, error)
 }
 
-// Implement services.UserService interface
+// Implement UserServiceInterface
 func (m *mockUserService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
 	if m.createUserFunc != nil {
 		return m.createUserFunc(ctx, req)
@@ -78,55 +76,6 @@ func (m *mockUserService) ListUsers(ctx context.Context) ([]*models.User, error)
 		return m.listUsersFunc(ctx)
 	}
 	return nil, errors.New("ListUsers not implemented")
-}
-
-func (m *mockUserService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
-	if m.createUserFunc != nil {
-		return m.createUserFunc(ctx, req)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockUserService) GetUserByID(ctx context.Context, id string) (*models.User, error) {
-	if m.getUserByIDFunc != nil {
-		return m.getUserByIDFunc(ctx, id)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockUserService) GetUserByUserID(ctx context.Context, userID string) (*models.User, error) {
-	if m.getUserByUserIDFunc != nil {
-		return m.getUserByUserIDFunc(ctx, userID)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockUserService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	if m.getUserByEmailFunc != nil {
-		return m.getUserByEmailFunc(ctx, email)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockUserService) UpdateUser(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error) {
-	if m.updateUserFunc != nil {
-		return m.updateUserFunc(ctx, id, req)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockUserService) DeleteUser(ctx context.Context, id string) error {
-	if m.deleteUserFunc != nil {
-		return m.deleteUserFunc(ctx, id)
-	}
-	return errors.New("not implemented")
-}
-
-func (m *mockUserService) ListUsers(ctx context.Context) ([]*models.User, error) {
-	if m.listUsersFunc != nil {
-		return m.listUsersFunc(ctx)
-	}
-	return nil, errors.New("not implemented")
 }
 
 func TestNewUserHandler(t *testing.T) {
@@ -306,7 +255,7 @@ func TestUserHandler_GetUser_NotFound(t *testing.T) {
 	handler := NewUserHandler(mockService)
 	e := echo.New()
 
-	userID := primitive.NewObjectID()
+	userID := bson.NewObjectID()
 	req := httptest.NewRequest(http.MethodGet, "/users/"+userID.Hex(), nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -342,6 +291,8 @@ func TestUserHandler_GetUserByUserID_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/users/search?user_id=testuser", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.SetPath("/users/search")
+	c.QueryParams().Set("user_id", "testuser")
 
 	err := handler.GetUserByUserID(c)
 	if err != nil {
@@ -353,7 +304,7 @@ func TestUserHandler_GetUserByUserID_Success(t *testing.T) {
 	}
 }
 
-func TestUserHandler_GetUserByUserID_MissingParam(t *testing.T) {
+func TestUserHandler_GetUserByUserID_MissingQuery(t *testing.T) {
 	mockService := &mockUserService{}
 	handler := NewUserHandler(mockService)
 	e := echo.New()
