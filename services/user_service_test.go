@@ -280,10 +280,10 @@ func TestUserService_ErrorHandling(t *testing.T) {
 
 	// Test error message generation
 	baseErr := errors.New("connection failed")
-	wrappedErr := errors.New("failed to get user: " + baseErr.Error())
+	wrappedErr := fmt.Errorf("failed to get user: %w", baseErr)
 	
-	if wrappedErr.Error() != "failed to get user: connection failed" {
-		t.Error("Expected wrapped error message to contain original error")
+	if !errors.Is(wrappedErr, baseErr) {
+		t.Error("Expected wrapped error to contain the original error")
 	}
 }
 
