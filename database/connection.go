@@ -11,6 +11,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+const AuthSource = "admin"
+
 type Database struct {
 	Client *mongo.Client
 	DB     *mongo.Database
@@ -40,7 +42,7 @@ func NewConnection() (*Database, error) {
 	credential := options.Credential{
 		Username:   dbUser,
 		Password:   dbPassword,
-		AuthSource: "admin",
+		AuthSource: AuthSource,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
