@@ -49,6 +49,19 @@ func TestConnectAndDisconnect(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error when closing connection, got %v", err)
 	}
+
+	// Test GetDB function
+	dbInstance := GetDB()
+	if dbInstance == nil {
+		t.Error("Expected database instance to be available")
+	}
+
+	// Test closing when no client is connected
+	client = nil // Reset client
+	err = Close(ctx)
+	if err != nil {
+		t.Errorf("Expected no error when closing with nil client, got %v", err)
+	}
 }
 
 func TestGetEnvWithDefault(t *testing.T) {
@@ -104,5 +117,32 @@ func TestGetDatabaseName(t *testing.T) {
 	name = getDatabaseName()
 	if name != "godb" {
 		t.Errorf("Expected '%s', got '%s'", "godb", name)
+	}
+}
+
+// TestCloseWithoutConnection tests closing when no connection exists
+func TestCloseWithoutConnection(t *testing.T) {
+	// Reset the global client to nil
+	originalClient := client
+	client = nil
+	defer func() { client = originalClient }()
+
+	ctx := context.Background()
+	err := Close(ctx)
+	if err != nil {
+		t.Errorf("Expected no error when closing with nil client, got %v", err)
+	}
+}
+
+// TestGetDBWithoutConnection tests GetDB when no connection exists  
+func TestGetDBWithoutConnection(t *testing.T) {
+	// Reset the global db to nil
+	originalDB := db
+	db = nil
+	defer func() { db = originalDB }()
+
+	result := GetDB()
+	if result != nil {
+		t.Error("Expected nil database when no connection exists")
 	}
 }
