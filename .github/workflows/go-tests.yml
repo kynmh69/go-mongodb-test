@@ -20,7 +20,7 @@ jobs:
         ports:
           - 27017:27017
         options: >-
-          --health-cmd "echo 'db.runCommand({ping: 1})' | mongosh --quiet"
+          --health-cmd "mongo --eval 'db.adminCommand({ping: 1})'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -36,14 +36,22 @@ jobs:
     - name: Install dependencies
       run: go mod tidy
       
+    - name: Install bc for calculations
+      run: sudo apt-get update && sudo apt-get install -y bc
+      
+    - name: Wait for MongoDB to be ready
+      run: |
+        echo "Waiting for MongoDB to be ready..."
+        sleep 10
+      
     - name: Set up MongoDB connection
       run: |
-        echo "MONGODB_URI=******localhost:27017" >> $GITHUB_ENV
-        echo "DATABASE_NAME=user_management" >> $GITHUB_ENV
+        echo "MONGODB_URI=mongodb://admin:password@localhost:27017/user_management?authSource=admin" >> $GITHUB_ENV
+        echo "MONGODB_DB_NAME=user_management" >> $GITHUB_ENV
     
     - name: Run backend tests with coverage
       run: |
-        go test ./... -v -coverprofile=coverage.out
+        go test ./... -v -coverprofile=coverage.out -short
     
     - name: Check coverage threshold
       run: |

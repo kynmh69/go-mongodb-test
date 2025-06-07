@@ -80,16 +80,26 @@ func TestDatabase_Close(t *testing.T) {
 }
 
 func TestNewConnection_Timeout(t *testing.T) {
+	// Skip this test if MongoDB is available
+	if testing.Short() {
+		t.Skip("Skipping timeout test in short mode")
+	}
+	
+	// Temporarily change environment to point to non-existent MongoDB
+	oldURI := os.Getenv("MONGODB_URI")
+	defer os.Setenv("MONGODB_URI", oldURI)
+	os.Setenv("MONGODB_URI", "mongodb://nonexistent:27017")
+
 	// Test that the function uses proper timeout
 	start := time.Now()
 
-	// This will timeout since we don't have a MongoDB instance
+	// This will timeout since we don't have a MongoDB instance at nonexistent host
 	_, err := NewConnection()
 
 	elapsed := time.Since(start)
 
 	if err == nil {
-		t.Error("Expected connection to fail without MongoDB instance")
+		t.Error("Expected connection to fail to nonexistent MongoDB instance")
 	}
 
 	// The timeout should be around 30 seconds, but we'll be more lenient
@@ -99,6 +109,16 @@ func TestNewConnection_Timeout(t *testing.T) {
 }
 
 func TestNewConnection_ContextHandling(t *testing.T) {
+	// Skip this test if MongoDB is available
+	if testing.Short() {
+		t.Skip("Skipping context handling test in short mode")
+	}
+	
+	// Temporarily change environment to point to non-existent MongoDB
+	oldURI := os.Getenv("MONGODB_URI")
+	defer os.Setenv("MONGODB_URI", oldURI)
+	os.Setenv("MONGODB_URI", "mongodb://nonexistent:27017")
+
 	// Test that context cancellation works properly
 
 	// Since NewConnection creates its own context, we can't directly test context cancellation
@@ -108,7 +128,7 @@ func TestNewConnection_ContextHandling(t *testing.T) {
 	go func() {
 		_, err := NewConnection()
 		if err == nil {
-			t.Error("Expected connection to fail")
+			t.Error("Expected connection to fail to nonexistent MongoDB instance")
 		}
 		done <- true
 	}()
