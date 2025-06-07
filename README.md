@@ -1,5 +1,7 @@
 # Go MongoDB User Management System
 
+[![Go Unit Tests](https://github.com/kynmh69/go-mongodb-test/actions/workflows/go-tests.yml/badge.svg)](https://github.com/kynmh69/go-mongodb-test/actions/workflows/go-tests.yml)
+
 Echo フレームワークを使用したユーザー管理 REST API と Next.js フロントエンドの統合システムです。MongoDB をデータベースとして使用し、完全な CRUD 操作を提供します。
 
 ## 機能

@@ -9,14 +9,20 @@ import (
 	"go-mongodb-test/models"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// DatabaseCollectionProvider interface for database operations
+type DatabaseCollectionProvider interface {
+	Collection(name string, opts ...*options.CollectionOptions) *mongo.Collection
+}
 
 type UserService struct {
 	collection *mongo.Collection
 }
 
-func NewUserService(db *mongo.Database) *UserService {
+func NewUserService(db DatabaseCollectionProvider) *UserService {
 	return &UserService{
 		collection: db.Collection("users"),
 	}

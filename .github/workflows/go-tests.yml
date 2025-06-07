@@ -1,0 +1,66 @@
+name: Go Unit Tests
+
+on:
+  push:
+    branches: [ main, feature/**, claude/** ]
+  pull_request:
+    branches: [ main, feature/**, claude/** ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:latest
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: password
+          MONGO_INITDB_DATABASE: user_management
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+      
+    - name: Install dependencies
+      run: go mod tidy
+      
+    - name: Install bc for calculations
+      run: sudo apt-get update && sudo apt-get install -y bc
+      
+    - name: Wait for MongoDB to be ready
+      run: |
+        echo "Waiting for MongoDB to be ready..."
+        sleep 10
+      
+    - name: Set up MongoDB connection
+      run: |
+        echo "MONGODB_URI=mongodb://admin:password@localhost:27017/user_management?authSource=admin" >> $GITHUB_ENV
+        echo "MONGODB_DB_NAME=user_management" >> $GITHUB_ENV
+    
+    - name: Run backend tests with coverage
+      run: |
+        go test ./... -v -coverprofile=coverage.out -short
+    
+    - name: Check coverage threshold
+      run: |
+        go tool cover -func=coverage.out > coverage.txt
+        COVERAGE=$(grep -Po 'total:\s+\(statements\)\s+\K[0-9.]+' coverage.txt)
+        echo "Total coverage: $COVERAGE%"
+        if (( $(echo "$COVERAGE < 75" | bc -l) )); then
+          echo "Code coverage is below 75%"
+          exit 1
+        else
+          echo "Code coverage meets or exceeds 75%"
+        fi

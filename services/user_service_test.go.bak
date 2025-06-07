@@ -1,0 +1,1118 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"go-mongodb-test/models"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+// Mock MongoDB Collection
+type mockCollection struct {
+	findOneFunc    func(context.Context, interface{}) *mongo.SingleResult
+	findFunc       func(context.Context, interface{}, ...*options.FindOptions) (*mongo.Cursor, error)
+	insertOneFunc  func(context.Context, interface{}) (*mongo.InsertOneResult, error)
+	updateOneFunc  func(context.Context, interface{}, interface{}, ...*options.UpdateOptions) (*mongo.UpdateResult, error)
+	deleteOneFunc  func(context.Context, interface{}, ...*options.DeleteOptions) (*mongo.DeleteResult, error)
+}
+
+func (m *mockCollection) FindOne(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
+	if m.findOneFunc != nil {
+		return m.findOneFunc(ctx, filter)
+	}
+	return nil
+}
+
+func (m *mockCollection) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+	if m.findFunc != nil {
+		return m.findFunc(ctx, filter, opts...)
+	}
+	return nil, errors.New("Find not implemented")
+}
+
+func (m *mockCollection) InsertOne(ctx context.Context, document interface{}, opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
+	if m.insertOneFunc != nil {
+		return m.insertOneFunc(ctx, document)
+	}
+	return nil, errors.New("InsertOne not implemented")
+}
+
+func (m *mockCollection) UpdateOne(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
+	if m.updateOneFunc != nil {
+		return m.updateOneFunc(ctx, filter, update)
+	}
+	return nil, errors.New("UpdateOne not implemented")
+}
+
+func (m *mockCollection) DeleteOne(ctx context.Context, filter interface{}, opts ...*options.DeleteOptions) (*mongo.DeleteResult, error) {
+	if m.deleteOneFunc != nil {
+		return m.deleteOneFunc(ctx, filter)
+	}
+	return nil, errors.New("DeleteOne not implemented")
+}
+
+// Mock SingleResult for FindOne operations
+type mockSingleResult struct {
+	err    error
+	result interface{}
+}
+
+func (m *mockSingleResult) Decode(v interface{}) error {
+	if m.err != nil {
+		return m.err
+	}
+	
+	// Type assertion for user
+	if user, ok := m.result.(models.User); ok {
+		if userPtr, ok := v.(*models.User); ok {
+			*userPtr = user
+			return nil
+		}
+	}
+	
+	return errors.New("failed to decode result")
+}
+
+func (m *mockSingleResult) Err() error {
+	return m.err
+}
+
+// Mock Cursor for Find operations
+type mockCursor struct {
+	results []interface{}
+	index   int
+	err     error
+}
+
+func (m *mockCursor) Next(ctx context.Context) bool {
+	if m.err != nil {
+		return false
+	}
+	m.index++
+	return m.index <= len(m.results)
+}
+
+func (m *mockCursor) Decode(v interface{}) error {
+	if m.err != nil {
+		return m.err
+	}
+	
+	if m.index <= 0 || m.index > len(m.results) {
+		return errors.New("invalid cursor position")
+	}
+	
+	// Type assertion for user
+	if user, ok := m.results[m.index-1].(models.User); ok {
+		if userPtr, ok := v.(*models.User); ok {
+			*userPtr = user
+			return nil
+		}
+	}
+	
+	return errors.New("failed to decode result")
+}
+
+func (m *mockCursor) Close(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockCursor) Err() error {
+	return m.err
+}
+
+// Mock DB with Collection method
+type mockDatabase struct {
+	collection *mockCollection
+}
+
+func (m *mockDatabase) Collection(name string, opts ...*options.CollectionOptions) *mongo.Collection {
+	// Since we can't create a real mongo.Collection with custom behavior,
+	// we'll need to use our mockCollection through the UserService's interface
+	// This workaround just returns a nil collection
+	return nil
+}
+
+// TestNewUserService tests the NewUserService function
+func TestNewUserService(t *testing.T) {
+	mockDB := &mockDatabase{
+		collection: &mockCollection{},
+	}
+	
+	service := NewUserService(mockDB)
+	
+	if service == nil {
+		t.Fatal("Expected UserService to be non-nil")
+	}
+}
+
+// Test the CreateUser method
+func TestUserService_CreateUser(t *testing.T) {
+	// Setup mock collection
+	mockColl := &mockCollection{}
+	
+	// Create service with a custom collection field
+	service := &UserService{
+		collection: mockColl,
+	}
+	
+	// Test successful user creation
+	t.Run("Success", func(t *testing.T) {
+		// Mock GetUserByUserID and GetUserByEmail to return nil (user doesn't exist)
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+			insertOneFunc: func(ctx context.Context, document interface{}) (*mongo.InsertOneResult, error) {
+				return &mongo.InsertOneResult{
+					InsertedID: bson.NewObjectID(),
+				}, nil
+			},
+		}
+		
+		req := &models.CreateUserRequest{
+			UserID:   "testuser",
+			Email:    "test@example.com",
+			Password: "password123",
+		}
+		
+		user, err := service.CreateUser(context.Background(), req)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user == nil {
+			t.Fatal("Expected user to be non-nil")
+		}
+		
+		if user.UserID != req.UserID {
+			t.Errorf("Expected user ID %s, got %s", req.UserID, user.UserID)
+		}
+		
+		if user.Email != req.Email {
+			t.Errorf("Expected email %s, got %s", req.Email, user.Email)
+		}
+	})
+	
+	// Test when user with same UserID already exists
+	t.Run("UserID already exists", func(t *testing.T) {
+		existingUser := models.User{
+			ID:        bson.NewObjectID(),
+			UserID:    "testuser",
+			Email:     "existing@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				// Return existing user for UserID filter
+				if f, ok := filter.(bson.M); ok {
+					if _, hasUserID := f["user_id"]; hasUserID {
+						return &mockSingleResult{
+							result: existingUser,
+						}
+					}
+				}
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+		}
+		
+		req := &models.CreateUserRequest{
+			UserID:   "testuser",
+			Email:    "new@example.com",
+			Password: "password123",
+		}
+		
+		_, err := service.CreateUser(context.Background(), req)
+		
+		if err == nil {
+			t.Error("Expected error for duplicate user_id, got nil")
+		}
+		
+		if err != nil && err.Error() != "user with this user_id already exists" {
+			t.Errorf("Expected 'user with this user_id already exists' error, got %v", err)
+		}
+	})
+	
+	// Test when user with same Email already exists
+	t.Run("Email already exists", func(t *testing.T) {
+		existingUser := models.User{
+			ID:        bson.NewObjectID(),
+			UserID:    "existing",
+			Email:     "test@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		findOneCounter := 0
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				// First call (GetUserByUserID) returns no documents
+				// Second call (GetUserByEmail) returns existing user
+				findOneCounter++
+				if findOneCounter == 1 {
+					return &mockSingleResult{
+						err: mongo.ErrNoDocuments,
+					}
+				} else {
+					return &mockSingleResult{
+						result: existingUser,
+					}
+				}
+			},
+		}
+		
+		req := &models.CreateUserRequest{
+			UserID:   "newuser",
+			Email:    "test@example.com",
+			Password: "password123",
+		}
+		
+		_, err := service.CreateUser(context.Background(), req)
+		
+		if err == nil {
+			t.Error("Expected error for duplicate email, got nil")
+		}
+		
+		if err != nil && err.Error() != "user with this email already exists" {
+			t.Errorf("Expected 'user with this email already exists' error, got %v", err)
+		}
+	})
+	
+	// Test when database insertion fails
+	t.Run("Database insertion error", func(t *testing.T) {
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+			insertOneFunc: func(ctx context.Context, document interface{}) (*mongo.InsertOneResult, error) {
+				return nil, errors.New("database error")
+			},
+		}
+		
+		req := &models.CreateUserRequest{
+			UserID:   "testuser",
+			Email:    "test@example.com",
+			Password: "password123",
+		}
+		
+		_, err := service.CreateUser(context.Background(), req)
+		
+		if err == nil {
+			t.Error("Expected error for database insertion, got nil")
+		}
+		
+		if err != nil && err.Error() != "failed to create user: database error" {
+			t.Errorf("Expected 'failed to create user: database error', got %v", err)
+		}
+	})
+}
+
+// Test the GetUserByID method
+func TestUserService_GetUserByID(t *testing.T) {
+	// Create service with a custom collection field
+	service := &UserService{}
+	
+	// Test successful user retrieval
+	t.Run("Success", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		existingUser := models.User{
+			ID:        userID,
+			UserID:    "testuser",
+			Email:     "test@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					result: existingUser,
+				}
+			},
+		}
+		
+		user, err := service.GetUserByID(context.Background(), userID.Hex())
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user == nil {
+			t.Fatal("Expected user to be non-nil")
+		}
+		
+		if user.ID != userID {
+			t.Errorf("Expected user ID %s, got %s", userID.Hex(), user.ID.Hex())
+		}
+	})
+	
+	// Test invalid ObjectID
+	t.Run("Invalid ObjectID", func(t *testing.T) {
+		_, err := service.GetUserByID(context.Background(), "invalid-id")
+		
+		if err == nil {
+			t.Error("Expected error for invalid ObjectID, got nil")
+		}
+	})
+	
+	// Test user not found
+	t.Run("User not found", func(t *testing.T) {
+		validObjectID := bson.NewObjectID()
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+		}
+		
+		_, err := service.GetUserByID(context.Background(), validObjectID.Hex())
+		
+		if err == nil {
+			t.Error("Expected error for user not found, got nil")
+		}
+		
+		if err != nil && err.Error() != "user not found" {
+			t.Errorf("Expected 'user not found' error, got %v", err)
+		}
+	})
+	
+	// Test database error
+	t.Run("Database error", func(t *testing.T) {
+		validObjectID := bson.NewObjectID()
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: errors.New("database error"),
+				}
+			},
+		}
+		
+		_, err := service.GetUserByID(context.Background(), validObjectID.Hex())
+		
+		if err == nil {
+			t.Error("Expected error for database error, got nil")
+		}
+		
+		if err != nil && err.Error() != "failed to get user: database error" {
+			t.Errorf("Expected 'failed to get user: database error', got %v", err)
+		}
+	})
+}
+
+// Test the GetUserByUserID method
+func TestUserService_GetUserByUserID(t *testing.T) {
+	// Create service with a custom collection field
+	service := &UserService{}
+	
+	// Test successful user retrieval
+	t.Run("Success", func(t *testing.T) {
+		existingUser := models.User{
+			ID:        bson.NewObjectID(),
+			UserID:    "testuser",
+			Email:     "test@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					result: existingUser,
+				}
+			},
+		}
+		
+		user, err := service.GetUserByUserID(context.Background(), "testuser")
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user == nil {
+			t.Fatal("Expected user to be non-nil")
+		}
+		
+		if user.UserID != "testuser" {
+			t.Errorf("Expected UserID %s, got %s", "testuser", user.UserID)
+		}
+	})
+	
+	// Test user not found
+	t.Run("User not found", func(t *testing.T) {
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+		}
+		
+		user, err := service.GetUserByUserID(context.Background(), "nonexistent")
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user != nil {
+			t.Errorf("Expected user to be nil, got %+v", user)
+		}
+	})
+	
+	// Test database error
+	t.Run("Database error", func(t *testing.T) {
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: errors.New("database error"),
+				}
+			},
+		}
+		
+		_, err := service.GetUserByUserID(context.Background(), "testuser")
+		
+		if err == nil {
+			t.Error("Expected error for database error, got nil")
+		}
+		
+		if err != nil && err.Error() != "failed to get user: database error" {
+			t.Errorf("Expected 'failed to get user: database error', got %v", err)
+		}
+	})
+}
+
+// Test the GetUserByEmail method
+func TestUserService_GetUserByEmail(t *testing.T) {
+	// Create service with a custom collection field
+	service := &UserService{}
+	
+	// Test successful user retrieval
+	t.Run("Success", func(t *testing.T) {
+		existingUser := models.User{
+			ID:        bson.NewObjectID(),
+			UserID:    "testuser",
+			Email:     "test@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					result: existingUser,
+				}
+			},
+		}
+		
+		user, err := service.GetUserByEmail(context.Background(), "test@example.com")
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user == nil {
+			t.Fatal("Expected user to be non-nil")
+		}
+		
+		if user.Email != "test@example.com" {
+			t.Errorf("Expected Email %s, got %s", "test@example.com", user.Email)
+		}
+	})
+	
+	// Test user not found
+	t.Run("User not found", func(t *testing.T) {
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+		}
+		
+		user, err := service.GetUserByEmail(context.Background(), "nonexistent@example.com")
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user != nil {
+			t.Errorf("Expected user to be nil, got %+v", user)
+		}
+	})
+	
+	// Test database error
+	t.Run("Database error", func(t *testing.T) {
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: errors.New("database error"),
+				}
+			},
+		}
+		
+		_, err := service.GetUserByEmail(context.Background(), "test@example.com")
+		
+		if err == nil {
+			t.Error("Expected error for database error, got nil")
+		}
+		
+		if err != nil && err.Error() != "failed to get user: database error" {
+			t.Errorf("Expected 'failed to get user: database error', got %v", err)
+		}
+	})
+}
+
+// Test the UpdateUser method
+func TestUserService_UpdateUser(t *testing.T) {
+	// Create service with a custom collection field
+	service := &UserService{}
+	
+	// Test successful user update
+	t.Run("Success", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		originalUser := models.User{
+			ID:        userID,
+			UserID:    "testuser",
+			Email:     "test@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		updatedUser := models.User{
+			ID:        userID,
+			UserID:    "newuserid",
+			Email:     "newemail@example.com",
+			CreatedAt: originalUser.CreatedAt,
+			UpdatedAt: time.Now(),
+		}
+		
+		findOneCounter := 0
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				findOneCounter++
+				
+				// For the initial check and the final retrieval
+				if f, ok := filter.(bson.M); ok {
+					if id, hasID := f["_id"]; hasID && id == userID {
+						return &mockSingleResult{
+							result: updatedUser,
+						}
+					}
+				}
+				
+				// For the uniqueness checks
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+			updateOneFunc: func(ctx context.Context, filter interface{}, update interface{}) (*mongo.UpdateResult, error) {
+				return &mongo.UpdateResult{
+					MatchedCount:  1,
+					ModifiedCount: 1,
+				}, nil
+			},
+		}
+		
+		newUserID := "newuserid"
+		newEmail := "newemail@example.com"
+		req := &models.UpdateUserRequest{
+			UserID: &newUserID,
+			Email:  &newEmail,
+		}
+		
+		user, err := service.UpdateUser(context.Background(), userID.Hex(), req)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user == nil {
+			t.Fatal("Expected user to be non-nil")
+		}
+		
+		if user.UserID != newUserID {
+			t.Errorf("Expected UserID %s, got %s", newUserID, user.UserID)
+		}
+		
+		if user.Email != newEmail {
+			t.Errorf("Expected Email %s, got %s", newEmail, user.Email)
+		}
+	})
+	
+	// Test invalid ObjectID
+	t.Run("Invalid ObjectID", func(t *testing.T) {
+		_, err := service.UpdateUser(context.Background(), "invalid-id", &models.UpdateUserRequest{})
+		
+		if err == nil {
+			t.Error("Expected error for invalid ObjectID, got nil")
+		}
+	})
+	
+	// Test UserID already exists
+	t.Run("UserID already exists", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		existingUser := models.User{
+			ID:        bson.NewObjectID(), // Different ID
+			UserID:    "existing",
+			Email:     "existing@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				// Return existing user for UserID filter
+				if f, ok := filter.(bson.M); ok {
+					if _, hasUserID := f["user_id"]; hasUserID {
+						return &mockSingleResult{
+							result: existingUser,
+						}
+					}
+				}
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+		}
+		
+		newUserID := "existing"
+		req := &models.UpdateUserRequest{
+			UserID: &newUserID,
+		}
+		
+		_, err := service.UpdateUser(context.Background(), userID.Hex(), req)
+		
+		if err == nil {
+			t.Error("Expected error for duplicate user_id, got nil")
+		}
+		
+		if err != nil && err.Error() != "user with this user_id already exists" {
+			t.Errorf("Expected 'user with this user_id already exists' error, got %v", err)
+		}
+	})
+	
+	// Test Email already exists
+	t.Run("Email already exists", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		existingUser := models.User{
+			ID:        bson.NewObjectID(), // Different ID
+			UserID:    "otheruser",
+			Email:     "existing@example.com",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		findOneCounter := 0
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				findOneCounter++
+				
+				// First check for UserID uniqueness
+				if findOneCounter == 1 {
+					return &mockSingleResult{
+						err: mongo.ErrNoDocuments,
+					}
+				}
+				
+				// Then check for Email uniqueness
+				if f, ok := filter.(bson.M); ok {
+					if _, hasEmail := f["email"]; hasEmail {
+						return &mockSingleResult{
+							result: existingUser,
+						}
+					}
+				}
+				
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+		}
+		
+		newEmail := "existing@example.com"
+		req := &models.UpdateUserRequest{
+			Email: &newEmail,
+		}
+		
+		_, err := service.UpdateUser(context.Background(), userID.Hex(), req)
+		
+		if err == nil {
+			t.Error("Expected error for duplicate email, got nil")
+		}
+		
+		if err != nil && err.Error() != "user with this email already exists" {
+			t.Errorf("Expected 'user with this email already exists' error, got %v", err)
+		}
+	})
+	
+	// Test password update
+	t.Run("Password update", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		updatedUser := models.User{
+			ID:        userID,
+			UserID:    "testuser",
+			Email:     "test@example.com",
+			Password:  "hashed-password",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				if f, ok := filter.(bson.M); ok {
+					if id, hasID := f["_id"]; hasID && id == userID {
+						return &mockSingleResult{
+							result: updatedUser,
+						}
+					}
+				}
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+			updateOneFunc: func(ctx context.Context, filter interface{}, update interface{}) (*mongo.UpdateResult, error) {
+				return &mongo.UpdateResult{
+					MatchedCount:  1,
+					ModifiedCount: 1,
+				}, nil
+			},
+		}
+		
+		newPassword := "newpassword"
+		req := &models.UpdateUserRequest{
+			Password: &newPassword,
+		}
+		
+		user, err := service.UpdateUser(context.Background(), userID.Hex(), req)
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if user == nil {
+			t.Fatal("Expected user to be non-nil")
+		}
+	})
+	
+	// Test database update error
+	t.Run("Database update error", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		
+		service.collection = &mockCollection{
+			findOneFunc: func(ctx context.Context, filter interface{}) *mongo.SingleResult {
+				return &mockSingleResult{
+					err: mongo.ErrNoDocuments,
+				}
+			},
+			updateOneFunc: func(ctx context.Context, filter interface{}, update interface{}) (*mongo.UpdateResult, error) {
+				return nil, errors.New("database error")
+			},
+		}
+		
+		newUserID := "newuserid"
+		req := &models.UpdateUserRequest{
+			UserID: &newUserID,
+		}
+		
+		_, err := service.UpdateUser(context.Background(), userID.Hex(), req)
+		
+		if err == nil {
+			t.Error("Expected error for database update, got nil")
+		}
+		
+		if err != nil && err.Error() != "failed to update user: database error" {
+			t.Errorf("Expected 'failed to update user: database error', got %v", err)
+		}
+	})
+}
+
+// Test the DeleteUser method
+func TestUserService_DeleteUser(t *testing.T) {
+	// Create service with a custom collection field
+	service := &UserService{}
+	
+	// Test successful user deletion
+	t.Run("Success", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		
+		service.collection = &mockCollection{
+			deleteOneFunc: func(ctx context.Context, filter interface{}) (*mongo.DeleteResult, error) {
+				return &mongo.DeleteResult{
+					DeletedCount: 1,
+				}, nil
+			},
+		}
+		
+		err := service.DeleteUser(context.Background(), userID.Hex())
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+	})
+	
+	// Test invalid ObjectID
+	t.Run("Invalid ObjectID", func(t *testing.T) {
+		err := service.DeleteUser(context.Background(), "invalid-id")
+		
+		if err == nil {
+			t.Error("Expected error for invalid ObjectID, got nil")
+		}
+	})
+	
+	// Test user not found
+	t.Run("User not found", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		
+		service.collection = &mockCollection{
+			deleteOneFunc: func(ctx context.Context, filter interface{}) (*mongo.DeleteResult, error) {
+				return &mongo.DeleteResult{
+					DeletedCount: 0,
+				}, nil
+			},
+		}
+		
+		err := service.DeleteUser(context.Background(), userID.Hex())
+		
+		if err == nil {
+			t.Error("Expected error for user not found, got nil")
+		}
+		
+		if err != nil && err.Error() != "user not found" {
+			t.Errorf("Expected 'user not found' error, got %v", err)
+		}
+	})
+	
+	// Test database error
+	t.Run("Database error", func(t *testing.T) {
+		userID := bson.NewObjectID()
+		
+		service.collection = &mockCollection{
+			deleteOneFunc: func(ctx context.Context, filter interface{}) (*mongo.DeleteResult, error) {
+				return nil, errors.New("database error")
+			},
+		}
+		
+		err := service.DeleteUser(context.Background(), userID.Hex())
+		
+		if err == nil {
+			t.Error("Expected error for database error, got nil")
+		}
+		
+		if err != nil && err.Error() != "failed to delete user: database error" {
+			t.Errorf("Expected 'failed to delete user: database error', got %v", err)
+		}
+	})
+}
+
+// Test the ListUsers method
+func TestUserService_ListUsers(t *testing.T) {
+	// Create service with a custom collection field
+	service := &UserService{}
+	
+	// Test successful user listing
+	t.Run("Success", func(t *testing.T) {
+		users := []models.User{
+			{
+				ID:        bson.NewObjectID(),
+				UserID:    "user1",
+				Email:     "user1@example.com",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			{
+				ID:        bson.NewObjectID(),
+				UserID:    "user2",
+				Email:     "user2@example.com",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+		}
+		
+		mockCursor := &mockCursor{
+			results: []interface{}{users[0], users[1]},
+		}
+		
+		service.collection = &mockCollection{
+			findFunc: func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+				return mockCursor, nil
+			},
+		}
+		
+		result, err := service.ListUsers(context.Background())
+		
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		
+		if len(result) != len(users) {
+			t.Errorf("Expected %d users, got %d", len(users), len(result))
+		}
+	})
+	
+	// Test database error
+	t.Run("Database error", func(t *testing.T) {
+		service.collection = &mockCollection{
+			findFunc: func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+				return nil, errors.New("database error")
+			},
+		}
+		
+		_, err := service.ListUsers(context.Background())
+		
+		if err == nil {
+			t.Error("Expected error for database error, got nil")
+		}
+		
+		if err != nil && err.Error() != "failed to get users: database error" {
+			t.Errorf("Expected 'failed to get users: database error', got %v", err)
+		}
+	})
+	
+	// Test cursor error
+	t.Run("Cursor error", func(t *testing.T) {
+		mockCursor := &mockCursor{
+			err: errors.New("cursor error"),
+		}
+		
+		service.collection = &mockCollection{
+			findFunc: func(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (*mongo.Cursor, error) {
+				return mockCursor, nil
+			},
+		}
+		
+		_, err := service.ListUsers(context.Background())
+		
+		if err == nil {
+			t.Error("Expected error for cursor error, got nil")
+		}
+	})
+}
+
+func TestUserService_ValidateCreateUserRequest(t *testing.T) {
+	// Test input validation logic that would be used in CreateUser
+	tests := []struct {
+		name        string
+		request     *models.CreateUserRequest
+		expectError bool
+	}{
+		{
+			name: "Valid request",
+			request: &models.CreateUserRequest{
+				UserID:   "testuser",
+				Email:    "test@example.com",
+				Password: "password123",
+			},
+			expectError: false,
+		},
+		{
+			name: "Empty UserID",
+			request: &models.CreateUserRequest{
+				UserID:   "",
+				Email:    "test@example.com",
+				Password: "password123",
+			},
+			expectError: true,
+		},
+		{
+			name: "Empty Email",
+			request: &models.CreateUserRequest{
+				UserID:   "testuser",
+				Email:    "",
+				Password: "password123",
+			},
+			expectError: true,
+		},
+		{
+			name: "Empty Password",
+			request: &models.CreateUserRequest{
+				UserID:   "testuser",
+				Email:    "test@example.com",
+				Password: "",
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Validate request fields
+			isEmpty := tt.request.UserID == "" || tt.request.Email == "" || tt.request.Password == ""
+			
+			if tt.expectError && !isEmpty {
+				t.Errorf("Expected error for request: %+v", tt.request)
+			}
+			
+			if !tt.expectError && isEmpty {
+				t.Errorf("Expected no error for request: %+v", tt.request)
+			}
+		})
+	}
+}
+
+func TestUserService_ObjectIDValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		id       string
+		isValid  bool
+	}{
+		{
+			name:    "Valid ObjectID",
+			id:      "507f1f77bcf86cd799439011",
+			isValid: true,
+		},
+		{
+			name:    "Invalid ObjectID - too short",
+			id:      "123",
+			isValid: false,
+		},
+		{
+			name:    "Invalid ObjectID - invalid characters",
+			id:      "507f1f77bcf86cd79943901g",
+			isValid: false,
+		},
+		{
+			name:    "Empty ObjectID",
+			id:      "",
+			isValid: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := bson.ObjectIDFromHex(tt.id)
+			
+			if tt.isValid && err != nil {
+				t.Errorf("Expected valid ObjectID for %s, got error: %v", tt.id, err)
+			}
+			
+			if !tt.isValid && err == nil {
+				t.Errorf("Expected invalid ObjectID for %s, got no error", tt.id)
+			}
+		})
+	}
+}
+
+// Helper function to create string pointers
+func stringPtr(s string) *string {
+	return &s
+}

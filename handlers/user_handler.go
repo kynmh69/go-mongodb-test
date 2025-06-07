@@ -9,6 +9,17 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// UserServiceProvider interface for user operations
+type UserServiceProvider interface {
+	CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error)
+	GetUserByID(ctx context.Context, id string) (*models.User, error)
+	GetUserByUserID(ctx context.Context, userID string) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	UpdateUser(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.User, error)
+	DeleteUser(ctx context.Context, id string) error
+	ListUsers(ctx context.Context) ([]*models.User, error)
+}
+
 type UserHandler struct {
 	userService UserServiceInterface
 }
